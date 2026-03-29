@@ -47,6 +47,20 @@ Terminate all statements with `;;`. Load scripts with `mcp__fsi-server__load_f_s
 | `runFor` | `Session -> seconds:float -> unit` | Run simulation for N seconds at 60 Hz |
 | `nextId` | `prefix:string -> string` | Generate sequential ID (e.g. `nextId "sphere"` -> `"sphere-1"`) |
 
+### State Access (requires PhysicsClient 0.7.0+)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `latestState` | `Session -> SimulationState option` | Full simulation state: all bodies with position, velocity, orientation, mass, shape |
+| `bodyPositions` | `Session -> (string * Vec3) list` | All body positions from latest state |
+| `getBody` | `Session -> bodyId:string -> Body option` | Look up a specific body by ID |
+| `bodyRegistry` | `Session -> ConcurrentDictionary<string, string>` | Body ID to shape kind mapping |
+| `lastStateUpdate` | `Session -> DateTime` | Timestamp of last state update from server |
+
+**`Body` fields:** `Id`, `Position`, `Velocity`, `Mass`, `Shape`, `AngularVelocity`, `Orientation`, `IsStatic`, `Color`, `MotionType`, `CollisionGroup`, `CollisionMask`, `Material`
+
+**`SimulationState` fields:** `Bodies` (repeated Body), `Time`, `Running`, `TickMs`, `SerializeMs`
+
 ### Body Creation Commands
 
 | Function | Signature | Description |
@@ -146,20 +160,33 @@ batchAdd s [makeCustomSphere "my-ball" (0.0, 5.0, 0.0) 1.0 10.0]
 **Fix available:** PhysicsSandbox branch `005-fix-session-state-sync` adds `ConfirmedReset` RPC
 that blocks until reset completes. After updating PhysicsClient, auto-generated IDs work correctly.
 
-### Locating bodies by position
+### Reading body positions
 
-There is no `getBodyPosition` API. Use raycasts or overlap queries to find bodies:
+With PhysicsClient 0.7.0+, use the state access API directly:
 
 ```fsharp
-// Find body at known approximate position by raycasting down
+// All body positions
+let positions = bodyPositions s
+for (id, pos) in positions do
+    printfn "%s -> (%.2f, %.2f, %.2f)" id pos.X pos.Y pos.Z
+
+// Single body with full state (position, velocity, orientation, etc.)
+match getBody s "sphere-1" with
+| Some body -> printfn "pos=%A vel=%A" body.Position body.Velocity
+| None -> printfn "not found"
+
+// Full simulation state
+match latestState s with
+| Some state -> printfn "Time=%.2f Bodies=%d Running=%b" state.Time state.Bodies.Count state.Running
+| None -> printfn "no state yet"
+```
+
+For spatial queries (what's at this position?), raycasts and overlap are still useful:
+
+```fsharp
 let findAt x z =
     raycast s (vec3 (x, 50.0, z)) (vec3 (0.0, -1.0, 0.0)) 100.0
     |> List.filter (fun (id, _, _, _) -> id <> "plane-1")
-
-// Find all bodies in a region
-let bodiesNear x y z radius =
-    overlapSphere s radius (vec3 (x, y, z))
-    |> List.filter (fun id -> id <> "plane-1")
 ```
 
 ## Physics Helper Library
@@ -187,21 +214,26 @@ open PhysicsHelpers
 
 ```fsharp
 // 1. Create targets and settle
-batchAdd s [makeSphereCmd (5.0, 2.0, 0.0, 0.5, 5.0)]
+batchAdd s [
+    makeSphereCmd (5.0, 2.0, 0.0, 0.5, 5.0)
+    makeSphereCmd (6.0, 2.0, 0.0, 0.5, 5.0)
+    makeSphereCmd (5.5, 2.0, 1.0, 0.5, 5.0)
+]
 runFor s 2.0
 
-// 2. Scan for target positions
-let targets = scanBodies s 0.0 10.0 0.0 10.0 0.5  // from physics-helpers.fsx
+// 2. Get target positions directly from state
+let targets = bodyPositions s |> List.filter (fun (id, _) -> id <> "plane-1")
+let cx = targets |> List.averageBy (fun (_, p) -> p.X)
+let cy = targets |> List.averageBy (fun (_, p) -> p.Y)
+let cz = targets |> List.averageBy (fun (_, p) -> p.Z)
 
-// 3. Calculate center and launch position
-let center = centroid [for (_, p) in targets -> (p.X, p.Y, p.Z)]
-let launchPos = (fst3 center - 10.0, snd3 center, thd3 center)
-
-// 4. Create and launch ball
-batchAdd s [makeCustomSphere "ball" launchPos 0.8 30.0]
-let impulse = impulseForVelocity 30.0 15.0  // mass=30, target speed=15 m/s
-let dir = direction3 launchPos center |> normalize3
-batchAdd s [makeImpulseCmd ("ball", Vec3(X = impulse * fst3 dir, Y = impulse * snd3 dir, Z = impulse * thd3 dir))]
+// 3. Create and launch ball
+let ballX = cx - 10.0
+batchAdd s [makeCustomSphere "ball" (ballX, cy, cz) 0.8 30.0]
+let speed = 15.0
+let imp = 30.0 * speed  // mass * target_speed
+let dist = cx - ballX
+batchAdd s [makeImpulseCmd ("ball", Vec3(X = imp, Y = 0.0, Z = 0.0))]
 runFor s 4.0
 ```
 
