@@ -6,260 +6,375 @@
 ///   open PhysicsHelpers
 module PhysicsHelpers
 
-// ============================================================================
-// Tuple helpers for (x, y, z)
-// ============================================================================
-
-let fst3 (a, _, _) = a
-let snd3 (_, b, _) = b
-let thd3 (_, _, c) = c
+open System
+open System.Numerics
 
 // ============================================================================
-// Vector math (works with float tuples to avoid dependency on Vec3)
+// Vector3 convenience constructors
 // ============================================================================
 
-let add3 (x1, y1, z1) (x2, y2, z2) = (x1 + x2, y1 + y2, z1 + z2)
-let sub3 (x1, y1, z1) (x2, y2, z2) = (x1 - x2, y1 - y2, z1 - z2)
-let scale3 s (x, y, z) = (s * x, s * y, s * z)
-let dot3 (x1, y1, z1) (x2, y2, z2) = x1 * x2 + y1 * y2 + z1 * z2
-let length3 v = sqrt (dot3 v v)
-let distance3 a b = length3 (sub3 b a)
+let v3 (x: float, y: float, z: float) = Vector3(float32 x, float32 y, float32 z)
+let v3f (x: float32, y: float32, z: float32) = Vector3(x, y, z)
+let toTuple (v: Vector3) = (float v.X, float v.Y, float v.Z)
 
-let normalize3 v =
-    let m = length3 v
-    if m < 1e-12 then (0.0, 0.0, 0.0)
-    else scale3 (1.0 / m) v
-
-let direction3 fromPt toPt = normalize3 (sub3 toPt fromPt)
-
-let cross3 (x1, y1, z1) (x2, y2, z2) =
-    (y1 * z2 - z1 * y2, z1 * x2 - x1 * z2, x1 * y2 - y1 * x2)
-
-let midpoint3 a b = scale3 0.5 (add3 a b)
-
-let centroid (pts: (float * float * float) list) =
-    let n = float pts.Length
-    let sx = pts |> List.sumBy fst3
-    let sy = pts |> List.sumBy snd3
-    let sz = pts |> List.sumBy thd3
-    (sx / n, sy / n, sz / n)
+let midpoint (a: Vector3) (b: Vector3) = (a + b) * 0.5f
+let direction (a: Vector3) (b: Vector3) = Vector3.Normalize(b - a)
+let centroid (pts: Vector3 list) =
+    let sum = pts |> List.fold (+) Vector3.Zero
+    sum / float32 pts.Length
 
 // ============================================================================
 // Physics estimation — forces, impulses, projectiles
 // ============================================================================
 
-let gravity = 9.81
+let gravity = 9.81f
 
 /// Impulse needed to achieve a target velocity: impulse = mass * velocity
-let impulseForVelocity (mass: float) (targetSpeed: float) : float =
+let impulseForVelocity (mass: float32) (targetSpeed: float32) : float32 =
     mass * targetSpeed
 
 /// Time for an object to fall from height h (starting from rest): t = sqrt(2h/g)
-let fallTime (height: float) : float =
-    if height <= 0.0 then 0.0
-    else sqrt (2.0 * height / gravity)
+let fallTime (height: float32) : float32 =
+    if height <= 0.0f then 0.0f
+    else sqrt (2.0f * height / gravity)
 
 /// Velocity after falling from height h: v = sqrt(2gh)
-let fallVelocity (height: float) : float =
-    if height <= 0.0 then 0.0
-    else sqrt (2.0 * gravity * height)
+let fallVelocity (height: float32) : float32 =
+    if height <= 0.0f then 0.0f
+    else sqrt (2.0f * gravity * height)
 
 /// Max height reached when launched upward at speed v: h = v^2 / (2g)
-let maxHeight (upwardSpeed: float) : float =
-    upwardSpeed * upwardSpeed / (2.0 * gravity)
+let maxHeight (upwardSpeed: float32) : float32 =
+    upwardSpeed * upwardSpeed / (2.0f * gravity)
 
 /// Kinetic energy: KE = 0.5 * m * v^2
-let kineticEnergy (mass: float) (speed: float) : float =
-    0.5 * mass * speed * speed
+let kineticEnergy (mass: float32) (speed: float32) : float32 =
+    0.5f * mass * speed * speed
 
 /// Momentum: p = m * v
-let momentum (mass: float) (speed: float) : float =
+let momentum (mass: float32) (speed: float32) : float32 =
     mass * speed
 
 /// Projectile range on flat ground (no air resistance)
-/// launchSpeed: initial speed, launchAngleDeg: angle above horizontal
-let projectileRange (launchSpeed: float) (launchAngleDeg: float) : float =
-    let rad = launchAngleDeg * System.Math.PI / 180.0
-    launchSpeed * launchSpeed * sin (2.0 * rad) / gravity
+let projectileRange (launchSpeed: float32) (launchAngleDeg: float32) : float32 =
+    let rad = launchAngleDeg * MathF.PI / 180.0f
+    launchSpeed * launchSpeed * sin (2.0f * rad) / gravity
 
 /// Projectile max height
-let projectileMaxHeight (launchSpeed: float) (launchAngleDeg: float) : float =
-    let rad = launchAngleDeg * System.Math.PI / 180.0
+let projectileMaxHeight (launchSpeed: float32) (launchAngleDeg: float32) : float32 =
+    let rad = launchAngleDeg * MathF.PI / 180.0f
     let vy = launchSpeed * sin rad
-    vy * vy / (2.0 * gravity)
+    vy * vy / (2.0f * gravity)
 
 /// Projectile flight time (total, flat ground)
-let projectileFlightTime (launchSpeed: float) (launchAngleDeg: float) : float =
-    let rad = launchAngleDeg * System.Math.PI / 180.0
-    2.0 * launchSpeed * sin rad / gravity
+let projectileFlightTime (launchSpeed: float32) (launchAngleDeg: float32) : float32 =
+    let rad = launchAngleDeg * MathF.PI / 180.0f
+    2.0f * launchSpeed * sin rad / gravity
 
-/// Position of projectile at time t, given launch position, speed, angle (XY plane)
-/// Returns (x, y) displacement from launch point
-let projectilePositionAt (launchSpeed: float) (launchAngleDeg: float) (t: float) : float * float =
-    let rad = launchAngleDeg * System.Math.PI / 180.0
+/// Position of projectile at time t. Returns (horizontal, vertical) displacement.
+let projectilePositionAt (launchSpeed: float32) (launchAngleDeg: float32) (t: float32) : float32 * float32 =
+    let rad = launchAngleDeg * MathF.PI / 180.0f
     let vx = launchSpeed * cos rad
     let vy = launchSpeed * sin rad
-    (vx * t, vy * t - 0.5 * gravity * t * t)
+    (vx * t, vy * t - 0.5f * gravity * t * t)
 
-/// Impulse vector to launch a projectile from origin toward target position
-/// Returns (ix, iy, iz) impulse components
-let impulseToHit (mass: float) (fromPos: float * float * float) (toPos: float * float * float) (flightTime: float) : float * float * float =
-    let dx = fst3 toPos - fst3 fromPos
-    let dy = snd3 toPos - snd3 fromPos
-    let dz = thd3 toPos - thd3 fromPos
-    // Required velocity: v = d/t, but account for gravity on Y
-    let vx = dx / flightTime
-    let vy = (dy + 0.5 * gravity * flightTime * flightTime) / flightTime
-    let vz = dz / flightTime
-    (mass * vx, mass * vy, mass * vz)
+/// Impulse vector to launch from fromPos to toPos in given flight time (accounts for gravity)
+let impulseToHit (mass: float32) (fromPos: Vector3) (toPos: Vector3) (flightTime: float32) : Vector3 =
+    let d = toPos - fromPos
+    let vx = d.X / flightTime
+    let vy = (d.Y + 0.5f * gravity * flightTime * flightTime) / flightTime
+    let vz = d.Z / flightTime
+    Vector3(mass * vx, mass * vy, mass * vz)
 
-/// Estimate impulse for a direct straight-line throw (ignoring gravity arc)
-let impulseDirectThrow (mass: float) (fromPos: float * float * float) (toPos: float * float * float) (speed: float) : float * float * float =
-    let dir = direction3 fromPos toPos
-    let imp = impulseForVelocity mass speed
-    scale3 imp dir
+/// Impulse for a direct straight-line throw (ignoring gravity arc)
+let impulseDirectThrow (mass: float32) (fromPos: Vector3) (toPos: Vector3) (speed: float32) : Vector3 =
+    let dir = direction fromPos toPos
+    dir * (mass * speed)
 
 // ============================================================================
-// Collision detection — analytical tests between primitive shapes
+// Collision primitives
 // ============================================================================
 
-/// Axis-Aligned Bounding Box: center position + half-extents
+/// Axis-Aligned Bounding Box
 type AABB =
-    { Center: float * float * float
-      HalfExtents: float * float * float }
+    { Center: Vector3
+      HalfExtents: Vector3 }
 
-/// Sphere: center position + radius
+    member this.Min = this.Center - this.HalfExtents
+    member this.Max = this.Center + this.HalfExtents
+
+/// Bounding Sphere
 type BoundingSphere =
-    { Center: float * float * float
-      Radius: float }
+    { Center: Vector3
+      Radius: float32 }
 
-// -- Sphere vs Sphere --
+/// Oriented Bounding Box — center, half-extents in local space, and 3 orthonormal axes
+type OBB =
+    { Center: Vector3
+      HalfExtents: Vector3
+      AxisX: Vector3       // local X axis (unit vector in world space)
+      AxisY: Vector3       // local Y axis
+      AxisZ: Vector3 }     // local Z axis
 
-/// Test if two spheres overlap
+    /// Create an OBB from center, half-extents, and a rotation quaternion
+    static member FromQuaternion(center: Vector3, halfExtents: Vector3, rotation: Quaternion) =
+        { Center = center
+          HalfExtents = halfExtents
+          AxisX = Vector3.Transform(Vector3.UnitX, rotation)
+          AxisY = Vector3.Transform(Vector3.UnitY, rotation)
+          AxisZ = Vector3.Transform(Vector3.UnitZ, rotation) }
+
+    /// Create an OBB from center, half-extents, and Euler angles (degrees)
+    static member FromEulerDeg(center: Vector3, halfExtents: Vector3, yawDeg: float32, pitchDeg: float32, rollDeg: float32) =
+        let toRad d = d * MathF.PI / 180.0f
+        let q = Quaternion.CreateFromYawPitchRoll(toRad yawDeg, toRad pitchDeg, toRad rollDeg)
+        OBB.FromQuaternion(center, halfExtents, q)
+
+    /// Create an axis-aligned OBB (equivalent to AABB)
+    static member AxisAligned(center: Vector3, halfExtents: Vector3) =
+        { Center = center; HalfExtents = halfExtents
+          AxisX = Vector3.UnitX; AxisY = Vector3.UnitY; AxisZ = Vector3.UnitZ }
+
+    /// The 3 local axes as a list
+    member this.Axes = [this.AxisX; this.AxisY; this.AxisZ]
+
+    /// Get the 8 corner vertices in world space
+    member this.Corners =
+        [| for sx in [-1.0f; 1.0f] do
+             for sy in [-1.0f; 1.0f] do
+               for sz in [-1.0f; 1.0f] do
+                 this.Center
+                 + this.AxisX * (sx * this.HalfExtents.X)
+                 + this.AxisY * (sy * this.HalfExtents.Y)
+                 + this.AxisZ * (sz * this.HalfExtents.Z) |]
+
+// ============================================================================
+// Sphere vs Sphere
+// ============================================================================
+
 let sphereVsSphere (a: BoundingSphere) (b: BoundingSphere) : bool =
-    let d = distance3 a.Center b.Center
-    d < a.Radius + b.Radius
+    Vector3.Distance(a.Center, b.Center) < a.Radius + b.Radius
 
-/// Penetration depth between two spheres (negative = separated)
-let sphereVsSpherePenetration (a: BoundingSphere) (b: BoundingSphere) : float =
-    let d = distance3 a.Center b.Center
-    (a.Radius + b.Radius) - d
+let sphereVsSpherePenetration (a: BoundingSphere) (b: BoundingSphere) : float32 =
+    (a.Radius + b.Radius) - Vector3.Distance(a.Center, b.Center)
 
-/// Contact point and normal for sphere-sphere collision
-/// Returns None if not colliding
 let sphereVsSphereContact (a: BoundingSphere) (b: BoundingSphere) =
-    let d = distance3 a.Center b.Center
+    let d = Vector3.Distance(a.Center, b.Center)
     let pen = (a.Radius + b.Radius) - d
-    if pen <= 0.0 then None
+    if pen <= 0.0f then None
     else
-        let normal = direction3 a.Center b.Center
-        let contact = add3 a.Center (scale3 a.Radius normal)
+        let normal = direction a.Center b.Center
+        let contact = a.Center + normal * a.Radius
         Some (contact, normal, pen)
 
-// -- AABB vs AABB --
+// ============================================================================
+// AABB vs AABB
+// ============================================================================
 
-/// Test if two AABBs overlap
 let aabbVsAabb (a: AABB) (b: AABB) : bool =
-    let ax1, ay1, az1 = sub3 a.Center a.HalfExtents
-    let ax2, ay2, az2 = add3 a.Center a.HalfExtents
-    let bx1, by1, bz1 = sub3 b.Center b.HalfExtents
-    let bx2, by2, bz2 = add3 b.Center b.HalfExtents
-    ax1 <= bx2 && ax2 >= bx1 &&
-    ay1 <= by2 && ay2 >= by1 &&
-    az1 <= bz2 && az2 >= bz1
+    let aMin = a.Min
+    let aMax = a.Max
+    let bMin = b.Min
+    let bMax = b.Max
+    aMin.X <= bMax.X && aMax.X >= bMin.X &&
+    aMin.Y <= bMax.Y && aMax.Y >= bMin.Y &&
+    aMin.Z <= bMax.Z && aMax.Z >= bMin.Z
 
-/// Penetration depth on each axis for two AABBs
-/// Returns None if not colliding, Some (px, py, pz) with min-axis penetration
 let aabbVsAabbPenetration (a: AABB) (b: AABB) =
-    let dx = (fst3 a.HalfExtents + fst3 b.HalfExtents) - abs (fst3 a.Center - fst3 b.Center)
-    let dy = (snd3 a.HalfExtents + snd3 b.HalfExtents) - abs (snd3 a.Center - snd3 b.Center)
-    let dz = (thd3 a.HalfExtents + thd3 b.HalfExtents) - abs (thd3 a.Center - thd3 b.Center)
-    if dx <= 0.0 || dy <= 0.0 || dz <= 0.0 then None
-    else Some (dx, dy, dz)
+    let dx = (a.HalfExtents.X + b.HalfExtents.X) - abs (a.Center.X - b.Center.X)
+    let dy = (a.HalfExtents.Y + b.HalfExtents.Y) - abs (a.Center.Y - b.Center.Y)
+    let dz = (a.HalfExtents.Z + b.HalfExtents.Z) - abs (a.Center.Z - b.Center.Z)
+    if dx <= 0.0f || dy <= 0.0f || dz <= 0.0f then None
+    else Some (Vector3(dx, dy, dz))
 
-// -- Sphere vs AABB --
+// ============================================================================
+// Sphere vs AABB
+// ============================================================================
 
-/// Closest point on an AABB to a given point
-let closestPointOnAabb (box: AABB) (point: float * float * float) : float * float * float =
-    let clamp lo hi v = max lo (min hi v)
-    let minX = fst3 box.Center - fst3 box.HalfExtents
-    let maxX = fst3 box.Center + fst3 box.HalfExtents
-    let minY = snd3 box.Center - snd3 box.HalfExtents
-    let maxY = snd3 box.Center + snd3 box.HalfExtents
-    let minZ = thd3 box.Center - thd3 box.HalfExtents
-    let maxZ = thd3 box.Center + thd3 box.HalfExtents
-    (clamp minX maxX (fst3 point),
-     clamp minY maxY (snd3 point),
-     clamp minZ maxZ (thd3 point))
+let closestPointOnAabb (box: AABB) (point: Vector3) : Vector3 =
+    Vector3.Clamp(point, box.Min, box.Max)
 
-/// Test if a sphere overlaps an AABB
 let sphereVsAabb (sphere: BoundingSphere) (box: AABB) : bool =
     let closest = closestPointOnAabb box sphere.Center
-    let d = distance3 sphere.Center closest
-    d < sphere.Radius
+    Vector3.Distance(sphere.Center, closest) < sphere.Radius
 
-/// Penetration depth for sphere vs AABB (negative = separated)
-let sphereVsAabbPenetration (sphere: BoundingSphere) (box: AABB) : float =
+let sphereVsAabbPenetration (sphere: BoundingSphere) (box: AABB) : float32 =
     let closest = closestPointOnAabb box sphere.Center
-    let d = distance3 sphere.Center closest
-    sphere.Radius - d
+    sphere.Radius - Vector3.Distance(sphere.Center, closest)
 
-/// Contact info for sphere vs AABB
 let sphereVsAabbContact (sphere: BoundingSphere) (box: AABB) =
     let closest = closestPointOnAabb box sphere.Center
-    let d = distance3 sphere.Center closest
+    let d = Vector3.Distance(sphere.Center, closest)
     let pen = sphere.Radius - d
-    if pen <= 0.0 then None
+    if pen <= 0.0f then None
     else
-        let normal = direction3 closest sphere.Center
+        let normal = Vector3.Normalize(sphere.Center - closest)
         Some (closest, normal, pen)
 
-// -- Point tests --
+// ============================================================================
+// OBB vs OBB — Separating Axis Theorem (15 axes)
+// ============================================================================
 
-/// Test if a point is inside an AABB
-let pointInAabb (box: AABB) (point: float * float * float) : bool =
-    abs (fst3 point - fst3 box.Center) <= fst3 box.HalfExtents &&
-    abs (snd3 point - snd3 box.Center) <= snd3 box.HalfExtents &&
-    abs (thd3 point - thd3 box.Center) <= thd3 box.HalfExtents
+/// Project an OBB onto an axis and return (min, max) interval
+let private projectObb (obb: OBB) (axis: Vector3) : float32 * float32 =
+    let c = Vector3.Dot(obb.Center, axis)
+    let r =
+        abs (Vector3.Dot(obb.AxisX, axis)) * obb.HalfExtents.X +
+        abs (Vector3.Dot(obb.AxisY, axis)) * obb.HalfExtents.Y +
+        abs (Vector3.Dot(obb.AxisZ, axis)) * obb.HalfExtents.Z
+    (c - r, c + r)
 
-/// Test if a point is inside a sphere
-let pointInSphere (sphere: BoundingSphere) (point: float * float * float) : bool =
-    distance3 sphere.Center point <= sphere.Radius
-
-// -- Ray tests --
-
-/// Ray-sphere intersection. Returns Some t (distance along ray) or None
-let raySphere (origin: float * float * float) (dir: float * float * float) (sphere: BoundingSphere) : float option =
-    let oc = sub3 origin sphere.Center
-    let a = dot3 dir dir
-    let b = 2.0 * dot3 oc dir
-    let c = dot3 oc oc - sphere.Radius * sphere.Radius
-    let discriminant = b * b - 4.0 * a * c
-    if discriminant < 0.0 then None
+/// Test overlap on a single axis, returns separation (negative = overlapping)
+let private axisOverlap (a: OBB) (b: OBB) (axis: Vector3) : float32 =
+    if axis.LengthSquared() < 1e-10f then infinityf  // degenerate axis, skip
     else
-        let t = (-b - sqrt discriminant) / (2.0 * a)
-        if t >= 0.0 then Some t
-        else
-            let t2 = (-b + sqrt discriminant) / (2.0 * a)
-            if t2 >= 0.0 then Some t2 else None
+        let axis = Vector3.Normalize(axis)
+        let aMin, aMax = projectObb a axis
+        let bMin, bMax = projectObb b axis
+        let overlap = min (aMax - bMin) (bMax - aMin)
+        overlap
 
-/// Ray-AABB intersection (slab method). Returns Some (tmin, tmax) or None
-let rayAabb (origin: float * float * float) (dir: float * float * float) (box: AABB) : (float * float) option =
-    let inline slabTest o d ctr half =
-        if abs d < 1e-12 then
-            if abs (o - ctr) > half then (infinity, -infinity)
-            else (-infinity, infinity)
+/// Test if two OBBs overlap using the Separating Axis Theorem.
+/// Tests all 15 potential separating axes: 3 from A, 3 from B, 9 cross products.
+let obbVsObb (a: OBB) (b: OBB) : bool =
+    let axes = [
+        // 3 face normals of A
+        a.AxisX; a.AxisY; a.AxisZ
+        // 3 face normals of B
+        b.AxisX; b.AxisY; b.AxisZ
+        // 9 edge-edge cross products
+        Vector3.Cross(a.AxisX, b.AxisX); Vector3.Cross(a.AxisX, b.AxisY); Vector3.Cross(a.AxisX, b.AxisZ)
+        Vector3.Cross(a.AxisY, b.AxisX); Vector3.Cross(a.AxisY, b.AxisY); Vector3.Cross(a.AxisY, b.AxisZ)
+        Vector3.Cross(a.AxisZ, b.AxisX); Vector3.Cross(a.AxisZ, b.AxisY); Vector3.Cross(a.AxisZ, b.AxisZ)
+    ]
+    axes |> List.forall (fun axis -> axisOverlap a b axis > 0.0f)
+
+/// Penetration depth and separating axis for two OBBs.
+/// Returns None if not colliding, Some (depth, axis) for minimum penetration axis.
+let obbVsObbPenetration (a: OBB) (b: OBB) =
+    let axes = [
+        a.AxisX; a.AxisY; a.AxisZ
+        b.AxisX; b.AxisY; b.AxisZ
+        Vector3.Cross(a.AxisX, b.AxisX); Vector3.Cross(a.AxisX, b.AxisY); Vector3.Cross(a.AxisX, b.AxisZ)
+        Vector3.Cross(a.AxisY, b.AxisX); Vector3.Cross(a.AxisY, b.AxisY); Vector3.Cross(a.AxisY, b.AxisZ)
+        Vector3.Cross(a.AxisZ, b.AxisX); Vector3.Cross(a.AxisZ, b.AxisY); Vector3.Cross(a.AxisZ, b.AxisZ)
+    ]
+    let mutable minOverlap = infinityf
+    let mutable minAxis = Vector3.Zero
+    let mutable separated = false
+    for axis in axes do
+        if not separated then
+            let overlap = axisOverlap a b axis
+            if overlap <= 0.0f then separated <- true
+            elif overlap < minOverlap && axis.LengthSquared() >= 1e-10f then
+                minOverlap <- overlap
+                minAxis <- Vector3.Normalize(axis)
+    if separated then None
+    else
+        // Ensure normal points from A to B
+        let d = b.Center - a.Center
+        let minAxis = if Vector3.Dot(minAxis, d) < 0.0f then -minAxis else minAxis
+        Some (minOverlap, minAxis)
+
+// ============================================================================
+// Sphere vs OBB
+// ============================================================================
+
+/// Closest point on an OBB to a given point
+let closestPointOnObb (obb: OBB) (point: Vector3) : Vector3 =
+    let d = point - obb.Center
+    let mutable result = obb.Center
+    let axes = [| obb.AxisX; obb.AxisY; obb.AxisZ |]
+    let halfs = [| obb.HalfExtents.X; obb.HalfExtents.Y; obb.HalfExtents.Z |]
+    for i in 0..2 do
+        let dist = Vector3.Dot(d, axes[i])
+        let clamped = max -halfs[i] (min halfs[i] dist)
+        result <- result + axes[i] * clamped
+    result
+
+/// Test if a sphere overlaps an OBB
+let sphereVsObb (sphere: BoundingSphere) (obb: OBB) : bool =
+    let closest = closestPointOnObb obb sphere.Center
+    Vector3.Distance(sphere.Center, closest) < sphere.Radius
+
+/// Penetration depth for sphere vs OBB
+let sphereVsObbPenetration (sphere: BoundingSphere) (obb: OBB) : float32 =
+    let closest = closestPointOnObb obb sphere.Center
+    sphere.Radius - Vector3.Distance(sphere.Center, closest)
+
+/// Contact info for sphere vs OBB
+let sphereVsObbContact (sphere: BoundingSphere) (obb: OBB) =
+    let closest = closestPointOnObb obb sphere.Center
+    let d = Vector3.Distance(sphere.Center, closest)
+    let pen = sphere.Radius - d
+    if pen <= 0.0f then None
+    else
+        let normal = Vector3.Normalize(sphere.Center - closest)
+        Some (closest, normal, pen)
+
+// ============================================================================
+// Point-in-shape tests
+// ============================================================================
+
+let pointInAabb (box: AABB) (point: Vector3) : bool =
+    let d = Vector3.Abs(point - box.Center)
+    d.X <= box.HalfExtents.X && d.Y <= box.HalfExtents.Y && d.Z <= box.HalfExtents.Z
+
+let pointInSphere (sphere: BoundingSphere) (point: Vector3) : bool =
+    Vector3.Distance(sphere.Center, point) <= sphere.Radius
+
+let pointInObb (obb: OBB) (point: Vector3) : bool =
+    let d = point - obb.Center
+    abs (Vector3.Dot(d, obb.AxisX)) <= obb.HalfExtents.X &&
+    abs (Vector3.Dot(d, obb.AxisY)) <= obb.HalfExtents.Y &&
+    abs (Vector3.Dot(d, obb.AxisZ)) <= obb.HalfExtents.Z
+
+// ============================================================================
+// Ray intersection tests
+// ============================================================================
+
+/// Ray-sphere intersection. Returns Some t (distance along ray) or None.
+let raySphere (origin: Vector3) (dir: Vector3) (sphere: BoundingSphere) : float32 option =
+    let oc = origin - sphere.Center
+    let a = Vector3.Dot(dir, dir)
+    let b = 2.0f * Vector3.Dot(oc, dir)
+    let c = Vector3.Dot(oc, oc) - sphere.Radius * sphere.Radius
+    let discriminant = b * b - 4.0f * a * c
+    if discriminant < 0.0f then None
+    else
+        let t = (-b - sqrt discriminant) / (2.0f * a)
+        if t >= 0.0f then Some t
         else
-            let t1 = (ctr - half - o) / d
-            let t2 = (ctr + half - o) / d
+            let t2 = (-b + sqrt discriminant) / (2.0f * a)
+            if t2 >= 0.0f then Some t2 else None
+
+/// Ray-AABB intersection (slab method). Returns Some (tmin, tmax) or None.
+let rayAabb (origin: Vector3) (dir: Vector3) (box: AABB) : (float32 * float32) option =
+    let inline slabTest (o: float32) (d: float32) (lo: float32) (hi: float32) =
+        if abs d < 1e-12f then
+            if o < lo || o > hi then (infinityf, -infinityf)
+            else (-infinityf, infinityf)
+        else
+            let t1 = (lo - o) / d
+            let t2 = (hi - o) / d
             (min t1 t2, max t1 t2)
-    let (txMin, txMax) = slabTest (fst3 origin) (fst3 dir) (fst3 box.Center) (fst3 box.HalfExtents)
-    let (tyMin, tyMax) = slabTest (snd3 origin) (snd3 dir) (snd3 box.Center) (snd3 box.HalfExtents)
-    let (tzMin, tzMax) = slabTest (thd3 origin) (thd3 dir) (thd3 box.Center) (thd3 box.HalfExtents)
+    let bMin = box.Min
+    let bMax = box.Max
+    let txMin, txMax = slabTest origin.X dir.X bMin.X bMax.X
+    let tyMin, tyMax = slabTest origin.Y dir.Y bMin.Y bMax.Y
+    let tzMin, tzMax = slabTest origin.Z dir.Z bMin.Z bMax.Z
     let tmin = max txMin (max tyMin tzMin)
     let tmax = min txMax (min tyMax tzMax)
-    if tmax >= tmin && tmax >= 0.0 then Some (max tmin 0.0, tmax)
+    if tmax >= tmin && tmax >= 0.0f then Some (max tmin 0.0f, tmax)
     else None
+
+/// Ray-OBB intersection. Transforms ray into OBB local space, then uses slab method.
+let rayObb (origin: Vector3) (dir: Vector3) (obb: OBB) : (float32 * float32) option =
+    let d = origin - obb.Center
+    let localOrigin = Vector3(Vector3.Dot(d, obb.AxisX), Vector3.Dot(d, obb.AxisY), Vector3.Dot(d, obb.AxisZ))
+    let localDir = Vector3(Vector3.Dot(dir, obb.AxisX), Vector3.Dot(dir, obb.AxisY), Vector3.Dot(dir, obb.AxisZ))
+    let localBox = { Center = Vector3.Zero; HalfExtents = obb.HalfExtents }
+    rayAabb localOrigin localDir localBox
 
 // ============================================================================
 // Scene scanning helpers (require PClientV2 Session and Vec3)
@@ -272,7 +387,6 @@ open PhysicsSandbox.Shared.Contracts
 open PClientV2
 
 /// Scan a rectangular region with downward raycasts to find body positions.
-/// Returns list of (bodyId, hitPosition) excluding the ground plane.
 let scanBodies (session: Session) (xMin: float) (xMax: float) (zMin: float) (zMax: float) (step: float) : (string * Vec3) list =
     [ for x in xMin .. step .. xMax do
         for z in zMin .. step .. zMax do
@@ -306,7 +420,7 @@ let makeCustomBox (id: string) (x: float, y: float, z: float) (halfX: float, hal
 /// Aim and fire: create a sphere at fromPos and apply impulse toward toPos
 let fireAt (session: Session) (ballId: string) (fromPos: float * float * float) (radius: float) (mass: float) (toPos: float * float * float) (speed: float) : unit =
     batchAdd session [makeCustomSphere ballId fromPos radius mass]
-    let dir = direction3 fromPos toPos
-    let imp = impulseForVelocity mass speed
-    let ix, iy, iz = scale3 imp dir
-    batchAdd session [makeImpulseCmd (ballId, Vec3(X = ix, Y = iy, Z = iz))]
+    let dir = v3 fromPos |> fun f -> direction f (v3 toPos)
+    let imp = impulseForVelocity (float32 mass) (float32 speed)
+    let impulse = dir * imp
+    batchAdd session [makeImpulseCmd (ballId, Vec3(X = float impulse.X, Y = float impulse.Y, Z = float impulse.Z))]

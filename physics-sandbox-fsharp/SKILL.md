@@ -167,11 +167,12 @@ let bodiesNear x y z radius =
 A companion helper script is available at:
 `/home/developer/projects/PhysicsSkill/physics-helpers.fsx`
 
-This provides:
+This provides (all vector math uses `System.Numerics.Vector3`):
 - **Estimation functions**: Calculate impulse needed for a target velocity, projectile trajectories,
   time to fall from height, impact velocity, kinetic energy
-- **Collision detection**: AABB-AABB, sphere-sphere, sphere-AABB intersection tests
-- **Coordinate helpers**: Distance, midpoint, direction vectors, normalization
+- **Collision detection**: Sphere-sphere, AABB-AABB, sphere-AABB, OBB-OBB (SAT, 15 axes),
+  sphere-OBB, ray-sphere, ray-AABB, ray-OBB
+- **OBB construction**: From quaternion, Euler angles, or axis-aligned
 - **Scene scanning**: Grid-based raycast scanning to map body positions
 
 Load it in scripts with:
